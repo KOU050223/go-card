@@ -28,6 +28,10 @@ interface GameUIState extends Partial<GameState> {
   updateOpponentHp: (hp: number) => void;
   addCardToHand: (card: Card) => void;
   removeCardFromHand: (cardId: string) => void;
+  setHand: (cards: Card[]) => void;
+  setIsMyTurn: (isMyTurn: boolean) => void;
+  setGameStatus: (status: 'waiting' | 'playing' | 'finished') => void;
+  setWinner: (winner: 'player' | 'opponent' | undefined) => void;
   
   // Room and matchmaking actions
   setCurrentRoom: (room: any | null) => void;
@@ -103,6 +107,33 @@ export const useGameStore = create<GameUIState>((set) => ({
   setCurrentRoom: (currentRoom) => set({ currentRoom }),
   setSearchingMatch: (isSearchingMatch) => set({ isSearchingMatch }),
   setMatchmakingError: (matchmakingError) => set({ matchmakingError }),
+
+  // Game state management
+  setHand: (cards) => set((state) => {
+    if (!state.player) return state;
+    const updatedPlayer = {
+      ...state.player,
+      hand: cards,
+    };
+    return { player: updatedPlayer };
+  }),
+
+  setIsMyTurn: (isMyTurn) => set(() => ({
+    currentTurn: isMyTurn ? 'player' : 'opponent'
+  })),
+
+  setGameStatus: (status) => set(() => {
+    // Map status to appropriate game phase
+    let phase: GamePhase = 'draw';
+    if (status === 'playing') {
+      phase = 'battle';
+    } else if (status === 'finished') {
+      phase = 'end';
+    }
+    return { phase };
+  }),
+
+  setWinner: (winner) => set({ winner }),
 
   // HP management
   updatePlayerHp: (hp) => set((state) => {

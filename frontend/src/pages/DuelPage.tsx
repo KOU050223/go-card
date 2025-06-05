@@ -2,9 +2,9 @@
  * DuelPage component for the main game interface
  * Displays player HP, opponent HP, hand cards, and handles game actions
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { demoGameState } from '../store/demo';
+import { useGameStore } from '../store/game';
 import { useSocket } from '../hooks/useSocket';
 import { Card } from '../components/Card';
 import { HealthBar } from '../components/HealthBar';
@@ -16,14 +16,31 @@ import type { Card as CardType } from '../types/game';
 export const DuelPage: React.FC = () => {
   const navigate = useNavigate();
   const { sendMessage, isConnected } = useSocket();
-  const [selectedCard, setSelectedCard] = useState<CardType | null>(null);
+  const { player, opponent, currentTurn, phase, selectedCard, setSelectedCard } = useGameStore();
   const [gameStatus] = useState<'waiting' | 'playing' | 'finished'>('playing');
-  const [isMyTurn] = useState(true);
   
-  // Use demo data
-  const player = demoGameState.player;
-  const opponent = demoGameState.opponent;
-  const hand = player.hand;
+  // ゲームデータが存在しない場合はロビーに戻す
+  useEffect(() => {
+    if (!player || !opponent) {
+      console.log('No game data, redirecting to lobby');
+      navigate('/');
+    }
+  }, [player, opponent, navigate]);
+
+  const isMyTurn = currentTurn === 'player';
+  const hand = player?.hand || [];
+
+  // ゲームデータがロードされていない場合のローディング表示
+  if (!player || !opponent) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
+        <div className="text-white text-center">
+          <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p>ゲームデータを読み込んでいます...</p>
+        </div>
+      </div>
+    );
+  }
 
   /**
    * Handle card selection and attack

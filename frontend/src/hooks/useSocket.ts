@@ -39,7 +39,10 @@ export const useSocket = (options: UseSocketOptions = {}) => {
     setGameStatus, 
     setWinner, 
     updatePlayerHp, 
-    updateOpponentHp 
+    updateOpponentHp,
+    setCurrentRoom,
+    setSearchingMatch,
+    setMatchmakingError
   } = useGameStore();
 
   const [isConnected, setIsConnected] = useState(false);
@@ -101,23 +104,41 @@ export const useSocket = (options: UseSocketOptions = {}) => {
 
         case 'roomJoined':
           console.log('Joined room:', message.content);
-          // ルーム参加の状態を更新
+          setCurrentRoom(message.content);
+          setSearchingMatch(true);
           break;
 
         case 'gameReady':
           console.log('Game ready:', message.content);
+          setSearchingMatch(false);
           // ゲーム準備完了の処理
           break;
 
         case 'gameStart':
           console.log('Game starting:', message.content);
           setGameStatus('playing');
-          // ゲーム開始時の処理
+          setSearchingMatch(false);
+          setCurrentRoom(null);
+          // ゲーム開始時の処理 - 画面遷移はコンポーネント側で行う
+          if (message.content) {
+            // ゲーム開始に関する追加データがある場合の処理
+            if (message.content.players) {
+              const players = message.content.players;
+              // プレイヤー情報を設定（現在のユーザーと対戦相手を区別）
+              const currentPlayer = players.find((p: any) => p.UserID === user?.uid);
+              const opponent = players.find((p: any) => p.UserID !== user?.uid);
+              
+              if (currentPlayer) setPlayer(currentPlayer);
+              if (opponent) setOpponent(opponent);
+            }
+          }
           break;
 
         case 'matchCancelled':
           console.log('Match cancelled');
-          // マッチキャンセル時の処理
+          setSearchingMatch(false);
+          setMatchmakingError('マッチングがキャンセルされました');
+          setCurrentRoom(null);
           break;
           
         case 'error':
@@ -131,7 +152,7 @@ export const useSocket = (options: UseSocketOptions = {}) => {
     } catch (error) {
       console.error('Error parsing WebSocket message:', error);
     }
-  }, [setPlayer, setOpponent, setHand, setIsMyTurn, setGameStatus, setWinner, updatePlayerHp, updateOpponentHp, setConnectionStatus]);
+  }, [setPlayer, setOpponent, setHand, setIsMyTurn, setGameStatus, setWinner, updatePlayerHp, updateOpponentHp, setConnectionStatus, setCurrentRoom, setSearchingMatch, setMatchmakingError]);
 
   /**
    * Start ping interval to keep connection alive
@@ -166,7 +187,14 @@ export const useSocket = (options: UseSocketOptions = {}) => {
 
     try {
       const token = user ? await user.getIdToken() : '';
-      const wsUrl = token ? `${url}?token=${encodeURIComponent(token)}` : url;
+      const uid = user ? user.uid : '';
+      
+      // UIDとトークンの両方をクエリパラメータで送信
+      const params = new URLSearchParams();
+      if (token) params.append('token', token);
+      if (uid) params.append('uid', uid);
+      
+      const wsUrl = params.toString() ? `${url}?${params.toString()}` : url;
       
       wsRef.current = new WebSocket(wsUrl);
 

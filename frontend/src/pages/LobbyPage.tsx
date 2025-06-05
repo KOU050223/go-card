@@ -2,10 +2,11 @@
  * LobbyPage component for user authentication and matchmaking
  * Handles Google sign-in, email authentication and initiates game matchmaking
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useSocket } from '../hooks/useSocket';
+import { useGameStore } from '../store/game';
 import { EmailAuthForm } from '../components/EmailAuthForm';
 
 /**
@@ -14,40 +15,84 @@ import { EmailAuthForm } from '../components/EmailAuthForm';
 export const LobbyPage: React.FC = () => {
   const { user, signInWithGoogle, logout } = useAuth();
   const { sendMessage, isConnected } = useSocket();
+  const { phase, isSearchingMatch, matchmakingError, setSearchingMatch, setMatchmakingError } = useGameStore();
   const navigate = useNavigate();
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [authMode, setAuthMode] = useState<'google' | 'email'>('google');
+
+  // ゲーム開始時の画面遷移を監視
+  useEffect(() => {
+    if (phase === 'battle') {
+      navigate('/duel');
+    }
+  }, [phase, navigate]);
+
+  // マッチメイキングエラーの監視
+  useEffect(() => {
+    if (matchmakingError) {
+      setSearchError(matchmakingError);
+      setIsSearching(false);
+    }
+  }, [matchmakingError]);
+
+  // マッチメイキング状態の同期
+  useEffect(() => {
+    setIsSearching(isSearchingMatch);
+  }, [isSearchingMatch]);
 
   /**
    * Handle starting matchmaking
    */
   const handleStartMatch = async () => {
     if (!isConnected) {
-      setSearchError('Not connected to server. Please try again.');
+      setSearchError('サーバーに接続されていません。再試行してください。');
+      setMatchmakingError('サーバーに接続されていません。再試行してください。');
       return;
     }
 
     setIsSearching(true);
     setSearchError(null);
+    setSearchingMatch(true);
+    setMatchmakingError(null);
 
     try {
       // Send matchmaking request to server
       sendMessage({
         type: 'findMatch',
-        playerId: user?.uid,
+        userId: user?.uid,
       });
 
-      // Navigate to duel page after a short delay
-      // In a real app, you'd wait for server confirmation
-      setTimeout(() => {
-        navigate('/duel');
-      }, 2000);
+      console.log('マッチメイキングリクエストを送信しました');
 
     } catch (error) {
       console.error('Error starting match:', error);
-      setSearchError('Failed to start matchmaking. Please try again.');
+      const errorMessage = 'マッチメイキングの開始に失敗しました。再試行してください。';
+      setSearchError(errorMessage);
+      setMatchmakingError(errorMessage);
       setIsSearching(false);
+      setSearchingMatch(false);
+    }
+  };
+
+  /**
+   * Handle canceling matchmaking
+   */
+  const handleCancelMatch = () => {
+    try {
+      sendMessage({
+        type: 'cancelMatch',
+        userId: user?.uid,
+      });
+      
+      setIsSearching(false);
+      setSearchingMatch(false);
+      setSearchError(null);
+      setMatchmakingError(null);
+      
+      console.log('マッチメイキングをキャンセルしました');
+    } catch (error) {
+      console.error('Error canceling match:', error);
     }
   };
 
@@ -58,7 +103,9 @@ export const LobbyPage: React.FC = () => {
     try {
       await logout();
       setIsSearching(false);
+      setSearchingMatch(false);
       setSearchError(null);
+      setMatchmakingError(null);
     } catch (error) {
       console.error('Error signing out:', error);
     }
@@ -196,6 +243,16 @@ export const LobbyPage: React.FC = () => {
                 '対戦開始'
               )}
             </button>
+
+            {/* Cancel match button - only show when searching */}
+            {isSearching && (
+              <button
+                onClick={handleCancelMatch}
+                className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors duration-200"
+              >
+                マッチングをキャンセル
+              </button>
+            )}
 
             {/* Card gallery button */}
             <button

@@ -19,6 +19,46 @@ export const EmailAuthForm: React.FC<EmailAuthFormProps> = ({ isLogin = true }) 
 
   const { signInWithEmail, signUpWithEmail } = useAuth();
 
+  const handleTestLogin = async (email: string, password: string) => {
+    setError('');
+    setLoading(true);
+
+    try {
+      // 最初にログインを試行
+      await signInWithEmail(email, password);
+      console.log(`Successfully logged in with: ${email}`);
+    } catch (error: any) {
+      // ログインに失敗した場合、アカウントを作成してから再度ログインを試行
+      if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
+        try {
+          console.log(`Creating test account: ${email}`);
+          await signUpWithEmail(email, password);
+          console.log(`Successfully created and logged in with: ${email}`);
+        } catch (signUpError: any) {
+          console.error('Test account creation error:', signUpError);
+          // アカウント作成エラーの詳細なハンドリング
+          if (signUpError.code === 'auth/email-already-in-use') {
+            // メールアドレスが既に使用されている場合、再度ログインを試行
+            try {
+              await signInWithEmail(email, password);
+              console.log(`Account exists, logged in with: ${email}`);
+            } catch (retryError: any) {
+              console.error('Retry login error:', retryError);
+              setError('ログインに失敗しました。パスワードを確認してください。');
+            }
+          } else {
+            setError(`テストアカウントの作成に失敗しました: ${getErrorMessage(signUpError.code)}`);
+          }
+        }
+      } else {
+        console.error('Test login error:', error);
+        setError(getErrorMessage(error.code));
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -152,20 +192,48 @@ export const EmailAuthForm: React.FC<EmailAuthFormProps> = ({ isLogin = true }) 
       {/* テスト用アカウント情報 */}
       <div className="mt-6 p-4 bg-gray-100 rounded-md">
         <h3 className="text-sm font-semibold text-gray-700 mb-2">テスト用アカウント</h3>
-        <div className="text-xs text-gray-600">
-          <p>メール: test@example.com</p>
-          <p>パスワード: test123</p>
-          <button
-            type="button"
-            onClick={() => {
-              setEmail('test@example.com');
-              setPassword('test123');
-              setMode('login');
-            }}
-            className="mt-2 text-xs bg-gray-200 px-2 py-1 rounded hover:bg-gray-300"
-          >
-            テストアカウントを使用
-          </button>
+        <div className="text-xs text-gray-600 space-y-3">
+          <div>
+            <p className="font-medium">プレイヤー1:</p>
+            <p>メール: player1@example.com</p>
+            <p>パスワード: test123</p>
+            <button
+              type="button"
+              onClick={() => handleTestLogin('player1@example.com', 'test123')}
+              disabled={loading}
+              className="mt-1 text-xs bg-blue-200 px-2 py-1 rounded hover:bg-blue-300 disabled:opacity-50"
+            >
+              プレイヤー1でログイン
+            </button>
+          </div>
+          
+          <div>
+            <p className="font-medium">プレイヤー2:</p>
+            <p>メール: player2@example.com</p>
+            <p>パスワード: test123</p>
+            <button
+              type="button"
+              onClick={() => handleTestLogin('player2@example.com', 'test123')}
+              disabled={loading}
+              className="mt-1 text-xs bg-green-200 px-2 py-1 rounded hover:bg-green-300 disabled:opacity-50"
+            >
+              プレイヤー2でログイン
+            </button>
+          </div>
+
+          <div>
+            <p className="font-medium">従来のテストアカウント:</p>
+            <p>メール: test@example.com</p>
+            <p>パスワード: test123</p>
+            <button
+              type="button"
+              onClick={() => handleTestLogin('test@example.com', 'test123')}
+              disabled={loading}
+              className="mt-1 text-xs bg-gray-200 px-2 py-1 rounded hover:bg-gray-300 disabled:opacity-50"
+            >
+              テストアカウントを使用
+            </button>
+          </div>
         </div>
       </div>
     </div>

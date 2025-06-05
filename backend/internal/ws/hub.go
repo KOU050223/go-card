@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/KOU050223/go-card/internal/game"
 )
@@ -53,6 +54,9 @@ func NewHub() *Hub {
 
 	// マッチング完了時のコールバックを設定
 	hub.matchmakingService.SetMatchCallback(hub.onMatchFound)
+
+	// 定期的なクリーンアップタスクを開始
+	go hub.startCleanupTask()
 
 	return hub
 }
@@ -167,5 +171,20 @@ func (h *Hub) onMatchFound(roomID string, players []game.MatchmakingRequest) {
 	err = h.matchmakingService.StartGame(roomID)
 	if err != nil {
 		log.Printf("ルームゲーム開始エラー: %v", err)
+	}
+}
+
+// startCleanupTask は定期的なクリーンアップタスクを開始します
+func (h *Hub) startCleanupTask() {
+	ticker := time.NewTicker(30 * time.Second) // 30秒ごとにクリーンアップ
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			if h.matchmakingService != nil {
+				h.matchmakingService.CleanupExpiredRooms(5 * time.Minute) // 5分以上古いルームを削除
+			}
+		}
 	}
 }

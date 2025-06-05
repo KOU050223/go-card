@@ -2,7 +2,9 @@
 package server
 
 import (
+	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/KOU050223/go-card/internal/auth"
 	"github.com/KOU050223/go-card/internal/db"
@@ -51,10 +53,28 @@ func setupRoutes(e *echo.Echo, cfg *Config) {
 		}
 		return c.JSON(http.StatusOK, user)
 	})
-
 	// WebSocket接続エンドポイント
 	e.GET("/ws", func(c echo.Context) error {
-		uid := c.Get("uid").(string)
+		// WebSocketの場合はクエリパラメータからトークンとUIDを取得
+		token := c.QueryParam("token")
+		userID := c.QueryParam("uid")
+
+		var uid string
+		if token != "" {
+			// トークンが提供されている場合は検証
+			verifiedUID, err := authMiddleware.VerifyWebSocketToken(token)
+			if err != nil {
+				return echo.NewHTTPError(http.StatusUnauthorized, "トークン検証に失敗しました")
+			}
+			uid = verifiedUID
+		} else if userID != "" {
+			// UIDが直接提供されている場合はそれを使用（開発用）
+			uid = userID
+		} else {
+			// どちらもない場合はランダムなユーザーIDを生成（開発用）
+			uid = "anonymous-" + c.RealIP() + "-" + fmt.Sprintf("%d", time.Now().Unix())
+		}
+
 		return ws.ServeWS(c, hub, uid)
-	}, authMiddleware.Verify)
+	})
 }
