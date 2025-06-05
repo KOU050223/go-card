@@ -30,6 +30,7 @@ func ServeWS(c echo.Context, hub *Hub, userID string) error {
 		conn:   conn,
 		send:   make(chan *Message, 256),
 		userID: userID,
+		closed: false,
 	}
 
 	// クライアント登録
