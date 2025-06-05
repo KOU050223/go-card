@@ -3,18 +3,19 @@ package main
 import (
 	"context"
 	"log"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"github.com/kOU050223/go-card/internal/server"
+	"github.com/KOU050223/go-card/internal/server"
 )
 
 func main() {
 	cfg := LoadConfig()    // config.go の関数
 	srv := server.New(cfg) // Echo を含む初期化
 	ctx, stop := signal.NotifyContext(context.Background(),
-		syscall.SIGTERM, syscall.Interrupt)
+		syscall.SIGTERM, os.Interrupt)
 	defer stop()
 
 	go func() {

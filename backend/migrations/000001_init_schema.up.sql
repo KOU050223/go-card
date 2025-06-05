@@ -1,0 +1,45 @@
+-- backend/migrations/000001_init_schema.up.sql
+CREATE TABLE IF NOT EXISTS users (
+  id VARCHAR(128) PRIMARY KEY,
+  username VARCHAR(255) NOT NULL,
+  points INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMP NOT NULL,
+  updated_at TIMESTAMP NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cards (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  attack_pts INT NOT NULL DEFAULT 0,
+  defense_pts INT NOT NULL DEFAULT 0,
+  image_url VARCHAR(255),
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS user_cards (
+  user_id VARCHAR(128) NOT NULL,
+  card_id INT NOT NULL,
+  quantity INT NOT NULL DEFAULT 1,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, card_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS duels (
+  id VARCHAR(36) PRIMARY KEY,
+  player1_id VARCHAR(128) NOT NULL,
+  player2_id VARCHAR(128) NOT NULL,
+  winner_id VARCHAR(128),
+  status ENUM('waiting', 'active', 'finished') NOT NULL DEFAULT 'waiting',
+  turn_count INT NOT NULL DEFAULT 0,
+  started_at TIMESTAMP,
+  finished_at TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (player1_id) REFERENCES users(id),
+  FOREIGN KEY (player2_id) REFERENCES users(id),
+  FOREIGN KEY (winner_id) REFERENCES users(id)
+);
