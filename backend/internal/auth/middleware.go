@@ -25,6 +25,7 @@ type FirebaseMiddleware struct {
 func NewFirebaseMiddleware(projectID string) (*FirebaseMiddleware, error) {
 	// 開発モードの確認
 	if os.Getenv("AUTH_DEV_MODE") == "true" {
+		fmt.Printf("Firebase Middleware: AUTH_DEV_MODE is enabled, using dev mode\n")
 		return &FirebaseMiddleware{
 			client:     nil,
 			devMode:    true,
@@ -32,6 +33,7 @@ func NewFirebaseMiddleware(projectID string) (*FirebaseMiddleware, error) {
 		}, nil
 	}
 
+	fmt.Printf("Firebase Middleware: Initializing with projectID: %s\n", projectID)
 	ctx := context.Background()
 
 	// Firebase初期化 - 開発環境用の簡略化された設定
@@ -40,14 +42,16 @@ func NewFirebaseMiddleware(projectID string) (*FirebaseMiddleware, error) {
 
 	// サービスアカウントキーパスがあればそれを使用
 	if keyPath := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"); keyPath != "" {
+		fmt.Printf("Firebase Middleware: Using service account credentials from: %s\n", keyPath)
 		opt := option.WithCredentialsFile(keyPath)
 		app, err = firebase.NewApp(ctx, &firebase.Config{ProjectID: projectID}, opt)
 	} else {
 		// 開発環境では認証を無効にしてFirebaseアプリを初期化
-		// 実際のプロダクション環境では適切な認証設定が必要
+		fmt.Printf("Firebase Middleware: Using default credentials\n")
 		app, err = firebase.NewApp(ctx, &firebase.Config{ProjectID: projectID})
 		if err != nil {
 			// Firebase初期化に失敗した場合は開発モードにフォールバック
+			fmt.Printf("Firebase Middleware: Failed to initialize Firebase app, falling back to dev mode: %v\n", err)
 			return &FirebaseMiddleware{
 				client:     nil,
 				devMode:    true,
@@ -57,12 +61,14 @@ func NewFirebaseMiddleware(projectID string) (*FirebaseMiddleware, error) {
 	}
 
 	if err != nil {
+		fmt.Printf("Firebase Middleware: Failed to initialize Firebase app: %v\n", err)
 		return nil, fmt.Errorf("Firebase初期化エラー: %w", err)
 	}
 
 	client, err := app.Auth(ctx)
 	if err != nil {
 		// Firebase Auth初期化に失敗した場合も開発モードにフォールバック
+		fmt.Printf("Firebase Middleware: Failed to initialize Firebase Auth client, falling back to dev mode: %v\n", err)
 		return &FirebaseMiddleware{
 			client:     nil,
 			devMode:    true,
@@ -70,6 +76,7 @@ func NewFirebaseMiddleware(projectID string) (*FirebaseMiddleware, error) {
 		}, nil
 	}
 
+	fmt.Printf("Firebase Middleware: Successfully initialized Firebase Auth client\n")
 	return &FirebaseMiddleware{
 		client:     client,
 		devMode:    false,
@@ -120,32 +127,29 @@ func (m *FirebaseMiddleware) Verify(next echo.HandlerFunc) echo.HandlerFunc {
 
 // VerifyWebSocketToken はWebSocket接続用のトークン検証を行います
 func (m *FirebaseMiddleware) VerifyWebSocketToken(token string) (string, error) {
-	// 開発モードまたはFirebaseクライアントがない場合
-	if m.devMode || m.client == nil {
-		// トークンが提供されている場合はそれを解析してUIDを取得を試みる
-		if token != "" {
-			// 簡易的なトークン解析（実際のJWT解析）
-			// 本格的な実装では jwt-go などのライブラリを使用
-			// ここでは開発用として、フロントエンドから送信されたUIDをそのまま使用
-			return "dev-user-" + fmt.Sprintf("%d", len(token)), nil
-		}
-
-		uid := m.testUserID
-		if uid == "" {
-			uid = "dev-user-123"
-		}
-		return uid, nil
-	}
-
 	if token == "" {
+		// トークンがない場合のみ開発モードを確認
+		if m.devMode || m.client == nil {
+			uid := m.testUserID
+			if uid == "" {
+				uid = "dev-user-123"
+			}
+			return uid, nil
+		}
 		return "", fmt.Errorf("認証トークンがありません")
 	}
 
-	// トークン検証
-	firebaseToken, err := m.client.VerifyIDToken(context.Background(), token)
-	if err != nil {
-		return "", fmt.Errorf("無効なトークンです: %w", err)
+	// トークンが提供されている場合は、可能な限り実際のFirebase検証を試みる
+	if m.client != nil {
+		// Firebase クライアントが利用可能な場合は実際の検証を行う
+		firebaseToken, err := m.client.VerifyIDToken(context.Background(), token)
+		if err != nil {
+			return "", fmt.Errorf("無効なトークンです: %w", err)
+		}
+		return firebaseToken.UID, nil
 	}
 
-	return firebaseToken.UID, nil
+	// Firebaseクライアントが利用できない場合は開発モードとして処理
+	// 本来はここに到達すべきではないが、安全のためのフォールバック
+	return "fallback-user-" + fmt.Sprintf("%d", len(token)), nil
 }
