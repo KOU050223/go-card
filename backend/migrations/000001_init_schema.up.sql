@@ -43,3 +43,12 @@ CREATE TABLE IF NOT EXISTS duels (
   FOREIGN KEY (player2_id) REFERENCES users(id),
   FOREIGN KEY (winner_id) REFERENCES users(id)
 );
+
+CREATE TABLE IF NOT EXISTS matchmaking (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id VARCHAR(128) NOT NULL,
+  status ENUM('waiting', 'matched', 'cancelled') NOT NULL DEFAULT 'waiting',
+  duel_id VARCHAR(36),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
