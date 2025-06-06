@@ -18,34 +18,65 @@ export const DuelPage: React.FC = () => {
   const navigate = useNavigate();
   const { duelId, player, opponent, currentTurn, selectedCard, setSelectedCard } = useGameStore();
   const { user } = useAuth();
+  const [waited, setWaited] = useState(false);
+
+  // userが未取得の間はローディング表示のみ（リダイレクト禁止）
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
+        <div className="text-white text-center">
+          <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p>ユーザー情報を取得しています...</p>
+        </div>
+      </div>
+    );
+  }
 
   // duelIdがなければロビーにリダイレクト
   useEffect(() => {
-    if (!duelId) {
+    if (!duelId && user) {
       navigate('/');
     }
-  }, [duelId, navigate]);
+  }, [duelId, user, navigate]);
+
+  // データ待機用: player/opponentが揃うまで最大2秒待つ
+  useEffect(() => {
+    if (user && (!player || !opponent)) {
+      const timer = setTimeout(() => setWaited(true), 2000);
+      return () => clearTimeout(timer);
+    } else {
+      setWaited(false); // データが揃ったらリセット
+    }
+  }, [user, player, opponent]);
+
+  useEffect(() => {
+    if (user && (!player || !opponent) && waited) {
+      navigate('/');
+    }
+  }, [user, player, opponent, waited, navigate]);
 
   // WebSocketのベースURL
   const wsBaseUrl = `${import.meta.env.VITE_BACKEND_WS || 'ws://localhost:8080'}/ws/duel`;
 
   // duelId, userが揃っていない場合はduelId: undefinedでuseSocketを呼ぶ
-  const socket = useSocket({
-    url: wsBaseUrl,
-    duelId: duelId && user ? duelId : undefined,
-  });
+  const socket = useSocket(
+    React.useMemo(
+      () => ({ url: wsBaseUrl, duelId: duelId && user ? duelId : undefined }),
+      [wsBaseUrl, duelId, user]           // ← 変更時のみ作り直す
+    )
+  );
 
   const sendMessage = socket?.sendMessage ?? (() => {});
   const isConnected = socket?.isConnected ?? false;
   const [gameStatus] = useState<'waiting' | 'playing' | 'finished'>('playing');
   
-  // ゲームデータが存在しない場合はロビーに戻す
-  useEffect(() => {
-    if (!player || !opponent) {
-      console.log('No game data, redirecting to lobby');
-      navigate('/');
-    }
-  }, [player, opponent, navigate]);
+  // // ゲームデータが存在しない場合はロビーに戻す
+  // useEffect(() => {
+  //   if (!player || !opponent) {
+  //     console.log('No game data, redirecting to lobby');
+  //     navigate('/');
+  //   }
+  // }, [player, opponent, navigate]);
 
   // デバッグ用: duelIdとuserの状態を表示
   console.log('DuelPage: duelId:', duelId, 'user:', user?.uid);

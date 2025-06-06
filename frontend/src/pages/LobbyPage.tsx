@@ -5,7 +5,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { useSocket } from '../hooks/useSocket';
 import { useGameStore } from '../store/game';
 import { EmailAuthForm } from '../components/EmailAuthForm';
 import { getAuth } from 'firebase/auth'; // 追加
@@ -15,20 +14,11 @@ import { getAuth } from 'firebase/auth'; // 追加
  */
 export const LobbyPage: React.FC = () => {
   const { user, signInWithGoogle, logout } = useAuth();
-  const { sendMessage, isConnected } = useSocket({ url: '/ws' });
   const { phase, isSearchingMatch, matchmakingError, setSearchingMatch, setMatchmakingError, setDuelId } = useGameStore();
   const navigate = useNavigate();
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [authMode, setAuthMode] = useState<'google' | 'email'>('google');
-
-  // WebSocket接続状態の監視
-  useEffect(() => {
-    console.log('=== LobbyPage: isConnected changed ===');
-    console.log('isConnected:', isConnected);
-    console.log('user:', user?.uid);
-    console.log('sendMessage function:', typeof sendMessage);
-  }, [isConnected, user, sendMessage]);
 
   // ゲーム開始時の画面遷移を監視
   useEffect(() => {
@@ -89,42 +79,11 @@ export const LobbyPage: React.FC = () => {
   };
 
   /**
-   * Test function to send a simple message
-   */
-  const handleTestMessage = () => {
-    console.log('=== TEST MESSAGE BUTTON CLICKED ===');
-    console.log('isConnected:', isConnected);
-    console.log('sendMessage function:', typeof sendMessage);
-    
-    try {
-      const testMessage = {
-        type: 'test',
-        content: 'This is a test message',
-        userId: user?.uid,
-      };
-      console.log('Sending test message:', testMessage);
-      sendMessage(testMessage);
-      console.log('Test message sent successfully');
-    } catch (error) {
-      console.error('Error sending test message:', error);
-    }
-  };
-
-  /**
    * Handle starting matchmaking
    */
   const handleStartMatch = async () => {
     console.log('=== START MATCH BUTTON CLICKED ===');
-    console.log('isConnected:', isConnected);
-    console.log('user:', user?.uid);
-    console.log('sendMessage function exists:', typeof sendMessage === 'function');
     
-    if (!isConnected) {
-      console.log('WebSocket not connected, showing error');
-      setSearchError('サーバーに接続されていません。再試行してください。');
-      setMatchmakingError('サーバーに接続されていません。再試行してください。');
-      return;
-    }
     setIsSearching(true);
     setSearchError(null);
     setSearchingMatch(true);
@@ -262,14 +221,6 @@ export const LobbyPage: React.FC = () => {
                 <EmailAuthForm />
               </div>
             )}
-
-            {/* Connection status */}
-            <div className="mt-4 text-center">
-              <div className={`inline-flex items-center space-x-2 text-sm ${isConnected ? 'text-green-400' : 'text-red-400'}`}>
-                <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-400' : 'bg-red-400'}`} />
-                <span>{isConnected ? 'サーバーに接続済み' : 'サーバーに接続中...'}</span>
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -287,14 +238,6 @@ export const LobbyPage: React.FC = () => {
             <p className="text-slate-300">{user.displayName || user.email}</p>
           </div>
 
-          {/* Connection status */}
-          <div className="mb-6 text-center">
-            <div className={`inline-flex items-center space-x-2 text-sm ${isConnected ? 'text-green-400' : 'text-red-400'}`}>
-              <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-400' : 'bg-red-400'}`} />
-              <span>{isConnected ? 'サーバーに接続済み' : 'サーバーに接続中...'}</span>
-            </div>
-          </div>
-
           {/* Error message */}
           {searchError && (
             <div className="mb-4 p-3 bg-red-900/50 border border-red-700 rounded text-red-300 text-sm">
@@ -304,29 +247,14 @@ export const LobbyPage: React.FC = () => {
 
           {/* Action buttons */}
           <div className="space-y-4">
-            {/* Test message button - for debugging */}
-            <button
-              onClick={handleTestMessage}
-              disabled={!isConnected}
-              className={`w-full py-2 px-6 rounded-lg font-semibold transition-all duration-200 ${
-                isConnected
-                  ? 'bg-yellow-600 hover:bg-yellow-700 text-white'
-                  : 'bg-slate-600 text-slate-400 cursor-not-allowed'
-              }`}
-            >
-              テストメッセージ送信
-            </button>
-
             {/* Start match button */}
             <button
               onClick={handleStartMatch}
-              disabled={!isConnected || isSearching}
+              disabled={isSearching}
               className={`w-full py-3 px-6 rounded-lg font-semibold transition-all duration-200 ${
                 isSearching
                   ? 'bg-blue-600 text-white cursor-not-allowed'
-                  : isConnected
-                  ? 'bg-green-600 hover:bg-green-700 text-white'
-                  : 'bg-slate-600 text-slate-400 cursor-not-allowed'
+                  : 'bg-green-600 hover:bg-green-700 text-white'
               }`}
             >
               {isSearching ? (

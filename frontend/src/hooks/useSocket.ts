@@ -150,9 +150,10 @@ export const useSocket = (options: UseSocketOptions = {}) => {
             if (message.content.players) {
               const players = message.content.players;
               // プレイヤー情報を設定（現在のユーザーと対戦相手を区別）
-              const currentPlayer = players.find((p: any) => p.UserID === user?.uid);
-              const opponent = players.find((p: any) => p.UserID !== user?.uid);
-              if (currentPlayer) setPlayer(currentPlayer);
+              const isMe = (p: any) =>
+                p.uid === user?.uid || p.userId === user?.uid || p.UserID === user?.uid;
+              const currentPlayer = players.find(isMe);
+              const opponent      = players.find((p: any) => !isMe(p));              if (currentPlayer) setPlayer(currentPlayer);
               if (opponent) setOpponent(opponent);
             }
           }
@@ -170,21 +171,52 @@ export const useSocket = (options: UseSocketOptions = {}) => {
           setConnectionStatus(false, message.message || message.content?.message);
           break;
           
-        case 'duelData':
+        case 'duelData': {
           console.log('Duel data received:', message.content);
-          if (message.content) {
-            // プレイヤー情報のセット
-            const { players, ...duelRest } = message.content;
-            if (players && user) {
-              const currentPlayer = players.find((p: any) => p.UserID === user.uid);
-              const opponent = players.find((p: any) => p.UserID !== user.uid);
-              if (currentPlayer) setPlayer(currentPlayer);
-              if (opponent) setOpponent(opponent);
+
+          // --- 受信データの分割 ---
+          const { players, status, turnCount, activeIdx, ...rest } =
+            message.content || {};
+
+          // --- プレイヤー／相手の判定関数（キー名の揺れを網羅） ---
+          const isMe = (p: any) =>
+            p.uid === user?.uid ||
+            p.userId === user?.uid ||
+            p.UserID === user?.uid ||
+            p.user_id === user?.uid;
+
+          if (players && user) {
+            const currentPlayer = players.find(isMe);
+            const rivalPlayer   = players.find((p: any) => !isMe(p));
+
+            // 自分の情報を store へ
+            if (currentPlayer) {
+              setPlayer(currentPlayer);
+
+              // 手札・ターン情報も反映（プロパティ名の大小両対応）
+              const hand     = currentPlayer.hand ?? currentPlayer.Hand;
+              const isMyTurn = currentPlayer.isMyTurn ?? currentPlayer.IsMyTurn;
+
+              if (hand)            setHand(hand);
+              if (isMyTurn !== undefined) setIsMyTurn(isMyTurn);
             }
-            // その他のデータも必要に応じてstoreにセット
-            // 例: setHand, setGameStatus など
+
+            // 相手情報を store へ
+            if (rivalPlayer) {
+              setOpponent(rivalPlayer);
+            }
           }
+
+          // --- ゲーム全体のステータスを反映 ---
+          if (status) {
+            setGameStatus(status);   // 例: 'waiting' | 'playing' | 'finished'
+          }
+
+          // 必要なら追加情報（ターン数など）もここでセット
+          // e.g. setTurnCount(turnCount);
+
           break;
+        }
           
         default:
           console.log('Unknown message type:', message.type);
@@ -223,8 +255,12 @@ export const useSocket = (options: UseSocketOptions = {}) => {
    * Connect to WebSocket server
    */
   const connect = useCallback(async () => {
-    if (!url || !user) {
-      // 必要な情報が揃っていなければ何もしない（エラーも出さない）
+    if (!url || !user) return;
+
+    // すでに OPEN / CONNECTING のソケットがあるなら再利用
+    if (wsRef.current &&
+        (wsRef.current.readyState === WebSocket.OPEN ||
+         wsRef.current.readyState === WebSocket.CONNECTING)) {
       return;
     }
 
@@ -326,20 +362,20 @@ export const useSocket = (options: UseSocketOptions = {}) => {
     setTimeout(() => connect(), 100);
   }, [disconnect, connect]);
 
-  // Auto-connect when user is available
-useEffect(() => {
-  if (user) {
-    isManualCloseRef.current = false;
-    connect();
-  } else {
-    disconnect();
-  }
-  // クリーンアップは「アンマウント時」だけ
-  return () => {
-    isManualCloseRef.current = true;
-    disconnect();
-  };
-}, [user]); // connect, disconnectは依存配列に入れない
+  // Auto-connect when user, duelId, and url areすべて揃ったときだけ接続する
+  useEffect(() => {
+    if (user && duelId && url) {
+      isManualCloseRef.current = false;
+      connect();
+    } else {
+      disconnect();
+    }
+    // クリーンアップは「アンマウント時」だけ
+    return () => {
+      isManualCloseRef.current = true;
+      disconnect();
+    };
+  }, [user, duelId, url]); // duelId依存を追加
 
   return {
     isConnected,
