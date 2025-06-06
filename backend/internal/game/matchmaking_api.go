@@ -10,11 +10,12 @@ import (
 )
 
 type MatchmakingAPI struct {
-	Repo *db.MatchmakingRepository
+	Repo        *db.MatchmakingRepository
+	DuelService *DuelService
 }
 
-func NewMatchmakingAPI(repo *db.MatchmakingRepository) *MatchmakingAPI {
-	return &MatchmakingAPI{Repo: repo}
+func NewMatchmakingAPI(repo *db.MatchmakingRepository, ds *DuelService) *MatchmakingAPI {
+	return &MatchmakingAPI{Repo: repo, DuelService: ds}
 }
 
 // POST /api/matchmaking/join
@@ -33,6 +34,14 @@ func (api *MatchmakingAPI) Join(c echo.Context) error {
 		if err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, "マッチング更新エラー")
 		}
+
+		// Create duel data in memory so /ws/duel can fetch it
+		if api.DuelService != nil {
+			if err := api.DuelService.CreateDuelWithID(duelID, userID, other.UserID); err != nil {
+				return echo.NewHTTPError(http.StatusInternalServerError, "対戦作成エラー")
+			}
+		}
+
 		return c.JSON(http.StatusOK, map[string]interface{}{"status": "matched", "duelId": duelID})
 	}
 	// 自分をwaitingで登録

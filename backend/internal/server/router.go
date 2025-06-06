@@ -108,7 +108,7 @@ func setupRoutes(e *echo.Echo, cfg *Config) {
 
 	// マッチング用リポジトリとAPI
 	matchmakingRepo := db.NewMatchmakingRepository(dbConn)
-	matchmakingAPI := game.NewMatchmakingAPI(matchmakingRepo)
+	matchmakingAPI := game.NewMatchmakingAPI(matchmakingRepo, hub.GetDuelService())
 
 	// マッチングAPIエンドポイント
 	api.POST("/matchmaking/join", matchmakingAPI.Join)
