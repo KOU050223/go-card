@@ -223,7 +223,7 @@ export const useSocket = (options: UseSocketOptions = {}) => {
    * Connect to WebSocket server
    */
   const connect = useCallback(async () => {
-    if (!url || !duelId || !user) {
+    if (!url || !user) {
       // 必要な情報が揃っていなければ何もしない（エラーも出さない）
       return;
     }
@@ -245,7 +245,7 @@ export const useSocket = (options: UseSocketOptions = {}) => {
       const params = new URLSearchParams();
       if (token) params.append('token', token);
       if (uid) params.append('uid', uid);
-      if (duelId) params.append('duelId', duelId); // duelIdは必須
+      if (duelId) params.append('duelId', duelId); // duelIdがある場合のみ追加
       const wsUrl = params.toString() ? `${url}?${params.toString()}` : url;
       console.log('Connecting to WebSocket:', wsUrl.replace(/token=[^&]+/, 'token=***'));
       
