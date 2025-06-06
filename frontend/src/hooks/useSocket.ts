@@ -10,6 +10,7 @@ interface UseSocketOptions {
   url?: string;
   maxReconnectAttempts?: number;
   maxReconnectDelay?: number;
+  duelId?: string; // 追加
 }
 
 interface SocketMessage {
@@ -26,7 +27,8 @@ export const useSocket = (options: UseSocketOptions = {}) => {
   const {
     url = import.meta.env.VITE_BACKEND_WS || 'ws://localhost:8080/ws',
     maxReconnectAttempts = 5,
-    maxReconnectDelay = 30000, // 30 seconds
+    maxReconnectDelay = 30000,
+    duelId, 
   } = options;
 
   const { user } = useAuth();
@@ -42,7 +44,8 @@ export const useSocket = (options: UseSocketOptions = {}) => {
     updateOpponentHp,
     setCurrentRoom,
     setSearchingMatch,
-    setMatchmakingError
+    setMatchmakingError,
+    setDuelId
   } = useGameStore();
 
   const [isConnected, setIsConnected] = useState(false);
@@ -65,10 +68,20 @@ export const useSocket = (options: UseSocketOptions = {}) => {
    * Send message through WebSocket
    */
   const sendMessage = useCallback((message: SocketMessage) => {
+    console.log('=== SENDING MESSAGE ===');
+    console.log('WebSocket readyState:', wsRef.current?.readyState);
+    console.log('WebSocket.OPEN:', WebSocket.OPEN);
+    console.log('WebSocket exists:', !!wsRef.current);
+    console.log('Message:', message);
+    
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      console.log('Sending message:', message.type, message);
       wsRef.current.send(JSON.stringify(message));
+      console.log('Message sent successfully');
     } else {
       console.warn('WebSocket is not connected. Message not sent:', message);
+      console.warn('WebSocket state:', wsRef.current?.readyState);
+      console.warn('Expected state (OPEN):', WebSocket.OPEN);
     }
   }, []);
 
@@ -78,10 +91,20 @@ export const useSocket = (options: UseSocketOptions = {}) => {
   const handleMessage = useCallback((event: MessageEvent) => {
     try {
       const message: SocketMessage = JSON.parse(event.data);
+      console.log('Received message:', message.type, message);
       
       switch (message.type) {
         case 'pong':
           // Handle pong response
+          break;
+
+        case 'user_connected':
+          console.log('User connected:', message.userId || message.content);
+          // ユーザー接続通知の処理（必要に応じて追加処理を実装）
+          break;
+
+        case 'testResponse':
+          console.log('🎉 テストレスポンス受信:', message.content);
           break;
           
         case 'gameUpdate':
@@ -121,13 +144,14 @@ export const useSocket = (options: UseSocketOptions = {}) => {
           setCurrentRoom(null);
           // ゲーム開始時の処理 - 画面遷移はコンポーネント側で行う
           if (message.content) {
+            // duelIdをstoreに保存
+            if (message.content.duelId) setDuelId(message.content.duelId);
             // ゲーム開始に関する追加データがある場合の処理
             if (message.content.players) {
               const players = message.content.players;
               // プレイヤー情報を設定（現在のユーザーと対戦相手を区別）
               const currentPlayer = players.find((p: any) => p.UserID === user?.uid);
               const opponent = players.find((p: any) => p.UserID !== user?.uid);
-              
               if (currentPlayer) setPlayer(currentPlayer);
               if (opponent) setOpponent(opponent);
             }
@@ -146,13 +170,29 @@ export const useSocket = (options: UseSocketOptions = {}) => {
           setConnectionStatus(false, message.message || message.content?.message);
           break;
           
+        case 'duelData':
+          console.log('Duel data received:', message.content);
+          if (message.content) {
+            // プレイヤー情報のセット
+            const { players, ...duelRest } = message.content;
+            if (players && user) {
+              const currentPlayer = players.find((p: any) => p.UserID === user.uid);
+              const opponent = players.find((p: any) => p.UserID !== user.uid);
+              if (currentPlayer) setPlayer(currentPlayer);
+              if (opponent) setOpponent(opponent);
+            }
+            // その他のデータも必要に応じてstoreにセット
+            // 例: setHand, setGameStatus など
+          }
+          break;
+          
         default:
           console.log('Unknown message type:', message.type);
       }
     } catch (error) {
       console.error('Error parsing WebSocket message:', error);
     }
-  }, [setPlayer, setOpponent, setHand, setIsMyTurn, setGameStatus, setWinner, updatePlayerHp, updateOpponentHp, setConnectionStatus, setCurrentRoom, setSearchingMatch, setMatchmakingError]);
+  }, [setPlayer, setOpponent, setHand, setIsMyTurn, setGameStatus, setWinner, updatePlayerHp, updateOpponentHp, setConnectionStatus, setCurrentRoom, setSearchingMatch, setMatchmakingError, setDuelId]);
 
   /**
    * Start ping interval to keep connection alive
@@ -163,7 +203,9 @@ export const useSocket = (options: UseSocketOptions = {}) => {
     }
     
     pingIntervalRef.current = setInterval(() => {
-      sendMessage({ type: 'ping' });
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        sendMessage({ type: 'ping' });
+      }
     }, 30000); // 30 seconds
   }, [sendMessage]);
 
@@ -181,61 +223,76 @@ export const useSocket = (options: UseSocketOptions = {}) => {
    * Connect to WebSocket server
    */
   const connect = useCallback(async () => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+    if (!url || !duelId || !user) {
+      // 必要な情報が揃っていなければ何もしない（エラーも出さない）
       return;
+    }
+
+    // Close existing connection if any
+    if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
+      console.log('Closing existing WebSocket connection before reconnecting');
+      wsRef.current.close();
+      wsRef.current = null;
     }
 
     try {
       const token = user ? await user.getIdToken() : '';
       const uid = user ? user.uid : '';
       
+      // デバッグ: duelIdの値を出力
+      console.log('connect: duelId', duelId);
       // UIDとトークンの両方をクエリパラメータで送信
       const params = new URLSearchParams();
       if (token) params.append('token', token);
       if (uid) params.append('uid', uid);
-      
+      if (duelId) params.append('duelId', duelId); // duelIdは必須
       const wsUrl = params.toString() ? `${url}?${params.toString()}` : url;
+      console.log('Connecting to WebSocket:', wsUrl.replace(/token=[^&]+/, 'token=***'));
       
       wsRef.current = new WebSocket(wsUrl);
 
       wsRef.current.onopen = () => {
-        console.log('WebSocket connected');
+        console.log('=== WEBSOCKET CONNECTED ===');
+        console.log('WebSocket readyState:', wsRef.current?.readyState);
+        console.log('duelId:', duelId, 'user:', user?.uid);
         setIsConnected(true);
         setConnectionStatus(true);
         reconnectAttemptsRef.current = 0;
-        startPing();
+        // Ping開始は接続が完全に確立された後に行う
+        setTimeout(() => {
+          startPing();
+        }, 100);
       };
 
       wsRef.current.onmessage = handleMessage;
 
       wsRef.current.onclose = (event) => {
-        console.log('WebSocket disconnected:', event.code, event.reason);
+        console.log('WebSocket disconnected:', event.code, event.reason, 'wasClean:', event.wasClean);
         setIsConnected(false);
         setConnectionStatus(false);
         stopPing();
-
-        // Reconnect if not manually closed
-        if (!isManualCloseRef.current && reconnectAttemptsRef.current < maxReconnectAttempts) {
+        wsRef.current = null;
+        if (!isManualCloseRef.current && 
+            !event.wasClean && 
+            event.code !== 1000 && // Normal closure
+            event.code !== 1001 && // Going away
+            reconnectAttemptsRef.current < maxReconnectAttempts) {
           const delay = getReconnectDelay();
-          console.log(`Reconnecting in ${delay}ms... (attempt ${reconnectAttemptsRef.current + 1}/${maxReconnectAttempts})`);
-          
-          reconnectTimeoutRef.current = setTimeout(() => {
-            reconnectAttemptsRef.current++;
-            connect();
-          }, delay);
+          console.log(`Reconnecting in ${Math.round(delay)}ms...`);
+          reconnectTimeoutRef.current = setTimeout(connect, delay);
+          reconnectAttemptsRef.current++;
         }
       };
 
-      wsRef.current.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        setConnectionStatus(false, 'Connection error');
+      wsRef.current.onerror = (event) => {
+        console.error('WebSocket error:', event);
+        setConnectionStatus(false, 'WebSocketエラー');
       };
-
-    } catch (error) {
-      console.error('Error creating WebSocket connection:', error);
-      setConnectionStatus(false, 'Failed to connect');
+    } catch (err) {
+      console.error('WebSocket接続エラー:', err);
+      setConnectionStatus(false, 'WebSocket接続エラー');
     }
-  }, [url, user, handleMessage, startPing, stopPing, maxReconnectAttempts, getReconnectDelay, setConnectionStatus]);
+  }, [url, user, duelId, maxReconnectAttempts, getReconnectDelay, setConnectionStatus, startPing, stopPing, handleMessage]);
 
   /**
    * Disconnect from WebSocket server
@@ -270,19 +327,19 @@ export const useSocket = (options: UseSocketOptions = {}) => {
   }, [disconnect, connect]);
 
   // Auto-connect when user is available
-  useEffect(() => {
-    if (user) {
-      isManualCloseRef.current = false;
-      connect();
-    } else {
-      disconnect();
-    }
-
-    return () => {
-      isManualCloseRef.current = true;
-      disconnect();
-    };
-  }, [user, connect, disconnect]);
+useEffect(() => {
+  if (user) {
+    isManualCloseRef.current = false;
+    connect();
+  } else {
+    disconnect();
+  }
+  // クリーンアップは「アンマウント時」だけ
+  return () => {
+    isManualCloseRef.current = true;
+    disconnect();
+  };
+}, [user]); // connect, disconnectは依存配列に入れない
 
   return {
     isConnected,

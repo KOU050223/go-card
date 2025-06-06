@@ -8,18 +8,27 @@ import { useAuth } from '../contexts/AuthContext';
 import { useSocket } from '../hooks/useSocket';
 import { useGameStore } from '../store/game';
 import { EmailAuthForm } from '../components/EmailAuthForm';
+import { getAuth } from 'firebase/auth'; // 追加
 
 /**
  * LobbyPage component that manages authentication and game matching
  */
 export const LobbyPage: React.FC = () => {
   const { user, signInWithGoogle, logout } = useAuth();
-  const { sendMessage, isConnected } = useSocket();
-  const { phase, isSearchingMatch, matchmakingError, setSearchingMatch, setMatchmakingError } = useGameStore();
+  const { sendMessage, isConnected } = useSocket({ url: '/ws' });
+  const { phase, isSearchingMatch, matchmakingError, setSearchingMatch, setMatchmakingError, setDuelId } = useGameStore();
   const navigate = useNavigate();
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [authMode, setAuthMode] = useState<'google' | 'email'>('google');
+
+  // WebSocket接続状態の監視
+  useEffect(() => {
+    console.log('=== LobbyPage: isConnected changed ===');
+    console.log('isConnected:', isConnected);
+    console.log('user:', user?.uid);
+    console.log('sendMessage function:', typeof sendMessage);
+  }, [isConnected, user, sendMessage]);
 
   // ゲーム開始時の画面遷移を監視
   useEffect(() => {
@@ -41,32 +50,104 @@ export const LobbyPage: React.FC = () => {
     setIsSearching(isSearchingMatch);
   }, [isSearchingMatch]);
 
+  // マッチング状態ポーリング
+  const pollMatchStatus = (idToken?: string) => {
+    const interval = setInterval(async () => {
+      try {
+        const user = getAuth().currentUser;
+        const token = idToken || (user ? await user.getIdToken() : null);
+        const res = await fetch('/api/matchmaking/status', {
+          credentials: 'include',
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+        });
+        const data = await res.json();
+        console.log('pollMatchStatus data:', data); // ← 追加
+        if (data.status === 'matched') {
+          clearInterval(interval);
+          if (data.duelId) {
+            setDuelId(data.duelId);
+            setIsSearching(false);
+            setSearchingMatch(false);
+            navigate('/duel');
+          } else {
+            setSearchError('対戦IDの取得に失敗しました。');
+            setIsSearching(false);
+            setSearchingMatch(false);
+          }
+        }
+        if (data.status === 'cancelled' || data.status === 'none') {
+          clearInterval(interval);
+          setIsSearching(false);
+          setSearchingMatch(false);
+        }
+      } catch (e) {
+        clearInterval(interval);
+        setIsSearching(false);
+        setSearchingMatch(false);
+      }
+    }, 1500);
+  };
+
+  /**
+   * Test function to send a simple message
+   */
+  const handleTestMessage = () => {
+    console.log('=== TEST MESSAGE BUTTON CLICKED ===');
+    console.log('isConnected:', isConnected);
+    console.log('sendMessage function:', typeof sendMessage);
+    
+    try {
+      const testMessage = {
+        type: 'test',
+        content: 'This is a test message',
+        userId: user?.uid,
+      };
+      console.log('Sending test message:', testMessage);
+      sendMessage(testMessage);
+      console.log('Test message sent successfully');
+    } catch (error) {
+      console.error('Error sending test message:', error);
+    }
+  };
+
   /**
    * Handle starting matchmaking
    */
   const handleStartMatch = async () => {
+    console.log('=== START MATCH BUTTON CLICKED ===');
+    console.log('isConnected:', isConnected);
+    console.log('user:', user?.uid);
+    console.log('sendMessage function exists:', typeof sendMessage === 'function');
+    
     if (!isConnected) {
+      console.log('WebSocket not connected, showing error');
       setSearchError('サーバーに接続されていません。再試行してください。');
       setMatchmakingError('サーバーに接続されていません。再試行してください。');
       return;
     }
-
     setIsSearching(true);
     setSearchError(null);
     setSearchingMatch(true);
     setMatchmakingError(null);
 
     try {
-      // Send matchmaking request to server
-      sendMessage({
-        type: 'findMatch',
-        userId: user?.uid,
+      const user = getAuth().currentUser;
+      const idToken = user ? await user.getIdToken() : null;
+      const res = await fetch('/api/matchmaking/join', {
+        method: 'POST',
+        credentials: 'include',
+        headers: idToken ? { 'Authorization': `Bearer ${idToken}` } : {},
       });
-
-      console.log('マッチメイキングリクエストを送信しました');
-
+      const data = await res.json();
+      if (data.status === 'matched' && data.duelId) {
+        setDuelId(data.duelId);
+        setIsSearching(false);
+        setSearchingMatch(false);
+        navigate('/duel');
+      } else {
+        pollMatchStatus(idToken || undefined); // nullをundefinedに変換
+      }
     } catch (error) {
-      console.error('Error starting match:', error);
       const errorMessage = 'マッチメイキングの開始に失敗しました。再試行してください。';
       setSearchError(errorMessage);
       setMatchmakingError(errorMessage);
@@ -78,18 +159,19 @@ export const LobbyPage: React.FC = () => {
   /**
    * Handle canceling matchmaking
    */
-  const handleCancelMatch = () => {
+  const handleCancelMatch = async () => {
     try {
-      sendMessage({
-        type: 'cancelMatch',
-        userId: user?.uid,
+      const user = getAuth().currentUser;
+      const idToken = user ? await user.getIdToken() : null;
+      await fetch('/api/matchmaking/cancel', {
+        method: 'POST',
+        credentials: 'include',
+        headers: idToken ? { 'Authorization': `Bearer ${idToken}` } : {},
       });
-      
       setIsSearching(false);
       setSearchingMatch(false);
       setSearchError(null);
       setMatchmakingError(null);
-      
       console.log('マッチメイキングをキャンセルしました');
     } catch (error) {
       console.error('Error canceling match:', error);
@@ -222,6 +304,19 @@ export const LobbyPage: React.FC = () => {
 
           {/* Action buttons */}
           <div className="space-y-4">
+            {/* Test message button - for debugging */}
+            <button
+              onClick={handleTestMessage}
+              disabled={!isConnected}
+              className={`w-full py-2 px-6 rounded-lg font-semibold transition-all duration-200 ${
+                isConnected
+                  ? 'bg-yellow-600 hover:bg-yellow-700 text-white'
+                  : 'bg-slate-600 text-slate-400 cursor-not-allowed'
+              }`}
+            >
+              テストメッセージ送信
+            </button>
+
             {/* Start match button */}
             <button
               onClick={handleStartMatch}

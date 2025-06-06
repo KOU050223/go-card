@@ -7,6 +7,8 @@ import (
 	"log"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // Card はカードの情報を表します
@@ -206,8 +208,18 @@ func (ds *DuelService) checkGameEnd(duel *Duel) {
 
 // CreateDuel は新しい対戦を作成します
 func (ds *DuelService) CreateDuel(player1ID, player2ID string) (string, error) {
-	// ... 実装省略 ...
-	return "", nil
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+
+	duelID := uuid.New().String()
+	duel := &Duel{
+		ID:        duelID,
+		Players:   [2]Player{{UserID: player1ID}, {UserID: player2ID}},
+		Status:    "active",
+		TurnCount: 1,
+	}
+	ds.duels[duelID] = duel
+	return duelID, nil
 }
 
 // GetDuel は対戦情報を取得します

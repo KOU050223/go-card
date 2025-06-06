@@ -9,14 +9,34 @@ import { useSocket } from '../hooks/useSocket';
 import { Card } from '../components/Card';
 import { HealthBar } from '../components/HealthBar';
 import type { Card as CardType } from '../types/game';
+import { useAuth } from '../contexts/AuthContext';
 
 /**
  * DuelPage component that renders the main game interface
  */
 export const DuelPage: React.FC = () => {
   const navigate = useNavigate();
-  const { sendMessage, isConnected } = useSocket();
-  const { player, opponent, currentTurn, phase, selectedCard, setSelectedCard } = useGameStore();
+  const { duelId, player, opponent, currentTurn, selectedCard, setSelectedCard } = useGameStore();
+  const { user } = useAuth();
+
+  // duelIdがなければロビーにリダイレクト
+  useEffect(() => {
+    if (!duelId) {
+      navigate('/');
+    }
+  }, [duelId, navigate]);
+
+  // WebSocketのベースURL
+  const wsBaseUrl = `${import.meta.env.VITE_BACKEND_WS || 'ws://localhost:8080'}/ws/duel`;
+
+  // duelId, userが揃っていない場合はduelId: undefinedでuseSocketを呼ぶ
+  const socket = useSocket({
+    url: wsBaseUrl,
+    duelId: duelId && user ? duelId : undefined,
+  });
+
+  const sendMessage = socket?.sendMessage ?? (() => {});
+  const isConnected = socket?.isConnected ?? false;
   const [gameStatus] = useState<'waiting' | 'playing' | 'finished'>('playing');
   
   // ゲームデータが存在しない場合はロビーに戻す
@@ -26,6 +46,9 @@ export const DuelPage: React.FC = () => {
       navigate('/');
     }
   }, [player, opponent, navigate]);
+
+  // デバッグ用: duelIdとuserの状態を表示
+  console.log('DuelPage: duelId:', duelId, 'user:', user?.uid);
 
   const isMyTurn = currentTurn === 'player';
   const hand = player?.hand || [];

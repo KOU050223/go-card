@@ -72,10 +72,15 @@ func (c *Client) readPump() {
 		err := c.conn.ReadJSON(&msg)
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("WebSocket読み取りエラー: %v", err)
+				log.Printf("WebSocket読み取りエラー (ユーザー: %s): %v", c.userID, err)
+			} else {
+				log.Printf("WebSocket接続終了 (ユーザー: %s): %v", c.userID, err)
 			}
 			break
 		}
+
+		// メッセージログ
+		log.Printf("メッセージ受信 (ユーザー: %s): タイプ=%s", c.userID, msg.Type)
 
 		// 送信者IDを設定
 		msg.UserID = c.userID
@@ -122,6 +127,14 @@ func (c *Client) writePump() {
 // handleMessage はメッセージタイプに応じた処理を行います
 func (c *Client) handleMessage(msg *Message) {
 	switch msg.Type {
+	case "test":
+		log.Printf("テストメッセージ受信 (ユーザー: %s): %v", c.userID, msg.Content)
+		// エコーバック
+		c.send <- &Message{
+			Type:    "testResponse",
+			UserID:  c.userID,
+			Content: "テストメッセージを受信しました",
+		}
 	case "findMatch":
 		c.handleFindMatch(msg)
 	case "cancelMatch":
@@ -160,7 +173,8 @@ func (c *Client) handleFindMatch(msg *Message) {
 	}
 
 	// マッチングが完了した場合（2人揃った場合）は対戦準備
-	if room.Status == "ready" {
+	if room.Status == "ready" || room.Status == "active" {
+		log.Printf("[DEBUG] notifyGameReady: room.Status=%s, roomID=%s, players=%v", room.Status, room.ID, room.Players)
 		c.notifyGameReady(room)
 	}
 }

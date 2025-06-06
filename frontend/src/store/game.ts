@@ -16,7 +16,10 @@ interface GameUIState extends Partial<GameState> {
   currentRoom: any | null;
   isSearchingMatch: boolean;
   matchmakingError: string | null;
-  
+
+  // duelIdを追加
+  duelId: string | null;
+
   // Actions
   setPlayer: (player: Player | undefined) => void;
   setOpponent: (opponent: Player | undefined) => void;
@@ -32,12 +35,12 @@ interface GameUIState extends Partial<GameState> {
   setIsMyTurn: (isMyTurn: boolean) => void;
   setGameStatus: (status: 'waiting' | 'playing' | 'finished') => void;
   setWinner: (winner: 'player' | 'opponent' | undefined) => void;
-  
   // Room and matchmaking actions
   setCurrentRoom: (room: any | null) => void;
   setSearchingMatch: (isSearching: boolean) => void;
   setMatchmakingError: (error: string | null) => void;
   resetGame: () => void;
+  setDuelId: (duelId: string | null) => void;
 }
 
 // Initial state
@@ -48,6 +51,7 @@ const initialState: Partial<GameState> & {
   currentRoom: any | null;
   isSearchingMatch: boolean;
   matchmakingError: string | null;
+  duelId: string | null;
 } = {
   gameId: '',
   player: undefined,
@@ -62,6 +66,7 @@ const initialState: Partial<GameState> & {
   currentRoom: null,
   isSearchingMatch: false,
   matchmakingError: null,
+  duelId: null,
 };
 
 /**
@@ -156,4 +161,5 @@ export const useGameStore = create<GameUIState>((set) => ({
 
   // Reset game state
   resetGame: () => set(() => initialState),
+  setDuelId: (duelId) => set({ duelId }),
 }));

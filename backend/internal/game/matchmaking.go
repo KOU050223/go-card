@@ -222,8 +222,8 @@ func (ms *MatchmakingService) StartGame(roomID string) error {
 		return errors.New("room must have exactly 2 players")
 	}
 
-	if room.Status != "ready" {
-		return fmt.Errorf("room status must be 'ready', current: %s", room.Status)
+	if room.Status != "ready" && room.Status != "active" {
+		return fmt.Errorf("room status must be 'ready' or 'active', current: %s", room.Status)
 	}
 
 	room.Status = "active"

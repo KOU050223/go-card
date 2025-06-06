@@ -8,6 +8,7 @@ import (
 
 	"github.com/KOU050223/go-card/internal/auth"
 	"github.com/KOU050223/go-card/internal/db"
+	"github.com/KOU050223/go-card/internal/game"
 	"github.com/KOU050223/go-card/internal/ws"
 	"github.com/labstack/echo/v4"
 )
@@ -77,4 +78,40 @@ func setupRoutes(e *echo.Echo, cfg *Config) {
 
 		return ws.ServeWS(c, hub, uid)
 	})
+
+	// Duel用WebSocket接続エンドポイント
+	e.GET("/ws/duel", func(c echo.Context) error {
+		token := c.QueryParam("token")
+		userID := c.QueryParam("uid")
+		duelID := c.QueryParam("duelId")
+
+		var uid string
+		if token != "" {
+			verifiedUID, err := authMiddleware.VerifyWebSocketToken(token)
+			if err != nil {
+				return echo.NewHTTPError(http.StatusUnauthorized, "トークン検証に失敗しました")
+			}
+			uid = verifiedUID
+		} else if userID != "" {
+			uid = userID
+		} else {
+			uid = "anonymous-" + c.RealIP() + "-" + fmt.Sprintf("%d", time.Now().Unix())
+		}
+
+		// duelIdが必須
+		if duelID == "" {
+			return echo.NewHTTPError(http.StatusBadRequest, "duelIdが必要です")
+		}
+
+		return ws.ServeDuelWS(c, hub, uid)
+	})
+
+	// マッチング用リポジトリとAPI
+	matchmakingRepo := db.NewMatchmakingRepository(dbConn)
+	matchmakingAPI := game.NewMatchmakingAPI(matchmakingRepo)
+
+	// マッチングAPIエンドポイント
+	api.POST("/matchmaking/join", matchmakingAPI.Join)
+	api.POST("/matchmaking/cancel", matchmakingAPI.Cancel)
+	api.GET("/matchmaking/status", matchmakingAPI.Status)
 }
