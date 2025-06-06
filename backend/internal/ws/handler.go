@@ -79,6 +79,9 @@ func ServeDuelWS(c echo.Context, hub *Hub, userID string) error {
 		duelService: hub.duelService,
 	}
 
+	// クライアント登録
+	client.hub.register <- client
+
 	// 対戦データを取得して送信
 	duel, err := hub.duelService.GetDuel(duelID)
 	if err != nil {
