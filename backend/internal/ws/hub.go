@@ -40,24 +40,17 @@ type Message struct {
 }
 
 // NewHub は新しいHub構造体を作成します
-func NewHub() *Hub {
+func NewHub(cards []game.Card) *Hub {
 	hub := &Hub{
 		clients:    make(map[string]*Client),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
 		broadcast:  make(chan *Message),
 	}
-
-	// ゲームサービスを初期化
 	hub.matchmakingService = game.NewMatchmakingService()
-	hub.duelService = game.NewDuelService()
-
-	// マッチング完了時のコールバックを設定
+	hub.duelService = game.NewDuelService(cards) // ★ここで渡す
 	hub.matchmakingService.SetMatchCallback(hub.onMatchFound)
-
-	// 定期的なクリーンアップタスクを開始
 	go hub.startCleanupTask()
-
 	return hub
 }
 

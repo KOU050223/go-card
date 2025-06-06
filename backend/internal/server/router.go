@@ -2,6 +2,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"time"
@@ -12,6 +13,16 @@ import (
 	"github.com/KOU050223/go-card/internal/ws"
 	"github.com/labstack/echo/v4"
 )
+
+type MatchmakingAPI struct {
+	Repo           *db.MatchmakingRepository
+	DuelService    *game.DuelService
+	DuelRepository *db.DuelRepository
+}
+
+func NewMatchmakingAPI(r *db.MatchmakingRepository, ds *game.DuelService, dr *db.DuelRepository) *MatchmakingAPI {
+	return &MatchmakingAPI{Repo: r, DuelService: ds, DuelRepository: dr}
+}
 
 // setupRoutes はすべてのルートをEchoインスタンスに登録します
 func setupRoutes(e *echo.Echo, cfg *Config) {
@@ -30,8 +41,20 @@ func setupRoutes(e *echo.Echo, cfg *Config) {
 		e.Logger.Fatalf("Firebase初期化エラー: %v", err)
 	}
 
+	cardRepo := db.NewCardRepository(dbConn)
+	allCards, err := cardRepo.GetAll(context.Background())
+	if err != nil {
+		e.Logger.Fatalf("カード読み込み失敗: %v", err)
+	}
+
+	// 型アサーションまたは変換が必要な場合
+	var gameCards []game.Card
+	for _, c := range allCards {
+		gameCards = append(gameCards, game.Card(c))
+	}
+
 	// WebSocketハブ初期化
-	hub := ws.NewHub()
+	hub := ws.NewHub(gameCards)
 	go hub.Run()
 
 	// パブリックエンドポイント
@@ -108,8 +131,7 @@ func setupRoutes(e *echo.Echo, cfg *Config) {
 
 	// マッチング用リポジトリとAPI
 	matchmakingRepo := db.NewMatchmakingRepository(dbConn)
-	duelRepo := db.NewDuelRepository(dbConn) // 追加
-	matchmakingAPI := game.NewMatchmakingAPI(matchmakingRepo, hub.GetDuelService(), duelRepo)
+	matchmakingAPI := game.NewMatchmakingAPI(matchmakingRepo, hub.GetDuelService())
 
 	// マッチングAPIエンドポイント
 	api.POST("/matchmaking/join", matchmakingAPI.Join)

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -62,9 +63,10 @@ func (e *GameError) Error() string {
 
 // DuelService はゲームの対戦管理を担当します
 type DuelService struct {
-	duels   map[string]*Duel
-	actions chan GameAction
-	mu      sync.RWMutex
+	duels    map[string]*Duel
+	actions  chan GameAction
+	cardPool []Card
+	mu       sync.RWMutex
 }
 
 const (
@@ -75,15 +77,13 @@ const (
 )
 
 // NewDuelService は新しい対戦サービスを作成します
-func NewDuelService() *DuelService {
+func NewDuelService(cards []Card) *DuelService {
 	ds := &DuelService{
-		duels:   make(map[string]*Duel),
-		actions: make(chan GameAction, 100),
+		duels:    make(map[string]*Duel),
+		actions:  make(chan GameAction, 100),
+		cardPool: cards,
 	}
-
-	// アクション処理用のgoroutineを起動
 	go ds.processActions()
-
 	return ds
 }
 
@@ -228,8 +228,9 @@ func (ds *DuelService) CreateDuel(player1ID, player2ID string) (string, error) {
 	return duelID, nil
 }
 
+// 開始手札３枚をランダム抽出
 func (s *DuelService) newPlayer(uid string) *Player {
-	return &Player{
+	p := &Player{
 		UserID:   uid,
 		HP:       startHP,
 		MaxHP:    startHP,
@@ -239,6 +240,11 @@ func (s *DuelService) newPlayer(uid string) *Player {
 		PlayArea: make([]Card, 0),
 		DeckSize: 30,
 	}
+	for i := 0; i < startHand && len(s.cardPool) > 0; i++ {
+		idx := rand.Intn(len(s.cardPool))
+		p.Hand = append(p.Hand, s.cardPool[idx])
+	}
+	return p
 }
 
 // CreateDuelWithID creates a new duel using the provided ID.
