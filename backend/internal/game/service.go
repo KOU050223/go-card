@@ -23,8 +23,13 @@ type Card struct {
 type Player struct {
 	UserID   string `json:"userId"`
 	HP       int    `json:"hp"`
-	Hand     []Card `json:"hand,omitempty"`
-	PlayArea []Card `json:"playArea,omitempty"`
+	MaxHP    int    `json:"maxHp"`
+	Mana     int    `json:"mana"`
+	MaxMana  int    `json:"maxMana"`
+	Hand     []Card `json:"hand"`
+	DeckSize int    `json:"deckSize"`
+	PlayArea []Card `json:"playArea"` // プレイエリアに出ているカード
+	// 必要なら防御力・ステータスなども
 }
 
 // Duel は対戦情報を表します
@@ -61,6 +66,13 @@ type DuelService struct {
 	actions chan GameAction
 	mu      sync.RWMutex
 }
+
+const (
+	startHP    = 30
+	startMana  = 1
+	startHand  = 3
+	maxManaCap = 10
+)
 
 // NewDuelService は新しい対戦サービスを作成します
 func NewDuelService() *DuelService {
@@ -216,22 +228,31 @@ func (ds *DuelService) CreateDuel(player1ID, player2ID string) (string, error) {
 	return duelID, nil
 }
 
+func (s *DuelService) newPlayer(uid string) *Player {
+	return &Player{
+		UserID:   uid,
+		HP:       startHP,
+		MaxHP:    startHP,
+		Mana:     startMana,
+		MaxMana:  maxManaCap,
+		Hand:     make([]Card, 0, startHand),
+		PlayArea: make([]Card, 0),
+		DeckSize: 30,
+	}
+}
+
 // CreateDuelWithID creates a new duel using the provided ID.
-func (ds *DuelService) CreateDuelWithID(duelID, player1ID, player2ID string) error {
-	ds.mu.Lock()
-	defer ds.mu.Unlock()
-
-	if _, exists := ds.duels[duelID]; exists {
-		return fmt.Errorf("duel %s already exists", duelID)
-	}
-
+func (s *DuelService) CreateDuelWithID(id, p1, p2 string) error {
 	duel := &Duel{
-		ID:        duelID,
-		Players:   [2]Player{{UserID: player1ID}, {UserID: player2ID}},
-		Status:    "active",
+		ID:        id,
+		Players:   [2]Player{*s.newPlayer(p1), *s.newPlayer(p2)},
 		TurnCount: 1,
+		ActiveIdx: 0,
+		Status:    "active",
 	}
-	ds.duels[duelID] = duel
+	s.mu.Lock()
+	s.duels[id] = duel
+	s.mu.Unlock()
 	return nil
 }
 

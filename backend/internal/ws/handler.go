@@ -84,6 +84,11 @@ func ServeDuelWS(c echo.Context, hub *Hub, userID string) error {
 
 	// 対戦データを取得して送信
 	duel, err := hub.duelService.GetDuel(duelID)
+	client.send <- &Message{
+		Type:    "duelData",
+		UserID:  userID,
+		Content: duel,
+	}
 	if err != nil {
 		log.Printf("[ServeDuelWS] duelデータ取得失敗: %v (userID=%s, duelId=%s)", err, userID, duelID)
 		client.send <- &Message{
