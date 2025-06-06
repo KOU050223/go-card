@@ -188,3 +188,8 @@ func (h *Hub) startCleanupTask() {
 		}
 	}
 }
+
+// GetDuelService returns the duel service managed by the hub.
+func (h *Hub) GetDuelService() *game.DuelService {
+	return h.duelService
+}

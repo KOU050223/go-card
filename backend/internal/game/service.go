@@ -207,11 +207,24 @@ func (ds *DuelService) checkGameEnd(duel *Duel) {
 }
 
 // CreateDuel は新しい対戦を作成します
+// CreateDuel creates a new duel and returns its generated ID.
 func (ds *DuelService) CreateDuel(player1ID, player2ID string) (string, error) {
+	duelID := uuid.New().String()
+	if err := ds.CreateDuelWithID(duelID, player1ID, player2ID); err != nil {
+		return "", err
+	}
+	return duelID, nil
+}
+
+// CreateDuelWithID creates a new duel using the provided ID.
+func (ds *DuelService) CreateDuelWithID(duelID, player1ID, player2ID string) error {
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
 
-	duelID := uuid.New().String()
+	if _, exists := ds.duels[duelID]; exists {
+		return fmt.Errorf("duel %s already exists", duelID)
+	}
+
 	duel := &Duel{
 		ID:        duelID,
 		Players:   [2]Player{{UserID: player1ID}, {UserID: player2ID}},
@@ -219,7 +232,7 @@ func (ds *DuelService) CreateDuel(player1ID, player2ID string) (string, error) {
 		TurnCount: 1,
 	}
 	ds.duels[duelID] = duel
-	return duelID, nil
+	return nil
 }
 
 // GetDuel は対戦情報を取得します
